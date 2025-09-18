@@ -240,41 +240,41 @@ export const getLectureForStudent = asyncHandler(async (req, res, next) => {
   return res.status(403).json(response);
 });
 
-export const submitAssignmentImages = asyncHandler(async (req, res, next) => {
-  const studentId = req.student?.id;
-  const { lectureId } = req.params;
+// export const submitAssignmentImages = asyncHandler(async (req, res, next) => {
+//   const studentId = req.student?.id;
+//   const { lectureId } = req.params;
 
-  if (!studentId)   return next(new Error("Unauthorized", { cause: 401 }));
-  if (!lectureId)   return next(new Error("lectureId is required", { cause: 400 }));
+//   if (!studentId)   return next(new Error("Unauthorized", { cause: 401 }));
+//   if (!lectureId)   return next(new Error("lectureId is required", { cause: 400 }));
 
-  const lecture = await Lecture.findById(lectureId, { title: 1 }).lean();
-  if (!lecture)     return next(new Error("Lecture not found", { cause: 404 }));
+//   const lecture = await Lecture.findById(lectureId, { title: 1 }).lean();
+//   if (!lecture)     return next(new Error("Lecture not found", { cause: 404 }));
 
-  if (!req.files || req.files.length === 0) {
-    return next(new Error("At least one image is required", { cause: 400 }));
-  }
+//   if (!req.files || req.files.length === 0) {
+//     return next(new Error("At least one image is required", { cause: 400 }));
+//   }
 
-  const images = req.files.map((f) => f.path);
+//   const images = req.files.map((f) => f.path);
 
-  const sub = await AssignmentSubmission.create({
-    studentId,
-    lectureId,
-    images,
-    status: "submitted",
-  });
+//   const sub = await AssignmentSubmission.create({
+//     studentId,
+//     lectureId,
+//     images,
+//     status: "submitted",
+//   });
 
-  const student = await Student.findById(studentId, { name: 1 }).lean();
+//   const student = await Student.findById(studentId, { name: 1 }).lean();
 
-  return res.status(201).json({
-    message: "تم استلام الواجب بنجاح",
-    studentName: student?.name || null,
-    lectureId,
-    lectureTitle: lecture.title,
-    imagesCount: images.length,
-    status: sub.status, 
-    createdAt: sub.createdAt,
-  });
-});
+//   return res.status(201).json({
+//     message: "تم استلام الواجب بنجاح",
+//     studentName: student?.name || null,
+//     lectureId,
+//     lectureTitle: lecture.title,
+//     imagesCount: images.length,
+//     status: sub.status, 
+//     createdAt: sub.createdAt,
+//   });
+// });
 
 import { StudentTokenMobile } from "../../../DB/models/studentToken.js";
 export const loginMobile = asyncHandler(async (req, res, next) => {
