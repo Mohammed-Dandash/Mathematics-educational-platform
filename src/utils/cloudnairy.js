@@ -58,42 +58,48 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 
-// 🗂️ مسارات التخزين
-const lecturesVideosPath = path.join(
-  process.cwd(),
-  "uploads",
-  "lectures_videos"
-);
-const examsPicsPath = path.join(process.cwd(), "uploads", "exams_pics");
-const receiptsPath = path.join(process.cwd(), "uploads", "receipts");
-const assignmentsPicsPath = path.join(
-  process.cwd(),
-  "uploads",
-  "assignments_pics"
-);
-const lecturesPicsPath = path.join(process.cwd(), "uploads", "lectures_pics");
+// 🗂️ مجلدات رئيسية
+const basePath = path.join(process.cwd(), "uploads");
 
-// ✅ تأكد من إنشاء الفولدرات لو مش موجودة
-[
-  lecturesVideosPath,
-  examsPicsPath,
-  receiptsPath,
-  assignmentsPicsPath,
-  lecturesPicsPath,
-].forEach((dir) => {
+const paths = {
+  lecturesVideos: path.join(basePath, "lectures_videos"),
+  examsPics: path.join(basePath, "exams_pics"),
+  receipts: path.join(basePath, "receipts"),
+  assignmentsPics: path.join(basePath, "assignments_pics"),
+  lecturesPics: path.join(basePath, "lectures_pics"),
+};
+
+// ✅ إنشاء الفولدرات
+Object.values(paths).forEach((dir) => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 });
 
+// 📂 التخزين
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, "/tmp"); // ✅ writable on Vercel
+    const url = req.originalUrl || "";
+
+    if (file.mimetype.startsWith("video/")) {
+      return cb(null, paths.lecturesVideos);
+    }
+
+    if (file.mimetype.startsWith("image/")) {
+      if (url.includes("assignments")) return cb(null, paths.assignmentsPics);
+      if (url.includes("exams")) return cb(null, paths.examsPics);
+      if (url.includes("payments")) return cb(null, paths.receipts);
+      if (url.includes("lecture")) return cb(null, paths.lecturesPics);
+      return cb(null, paths.examsPics); // default
+    }
+
+    cb(new Error("❌ الفايل غير مسموح به"), false);
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
+    const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${path.extname(file.originalname)}`;
+    cb(null, uniqueName);
   },
 });
-// 🛡️ الفلاتر (أنواع الفايلات المسموح بها)
+
+// ✅ الفلتر
 const fileFilter = (req, file, cb) => {
   const allowed = [
     "image/jpeg",
@@ -106,10 +112,7 @@ const fileFilter = (req, file, cb) => {
     "video/mkv",
   ];
   if (allowed.includes(file.mimetype)) cb(null, true);
-  else cb(new Error("الفايل غير مسموح به"), false);
+  else cb(new Error("❌ الفايل غير مسموح به"), false);
 };
 
-export const upload = multer({
-  storage,
-  fileFilter,
-});
+export const upload = multer({ storage, fileFilter });
