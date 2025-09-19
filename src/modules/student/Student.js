@@ -18,7 +18,7 @@ router.get("/lectures", studentAuth, Student.listLectureTitles);
 
 router.get("/s/lectures/:id", studentAuth, Student.getLectureForStudent);
 // router.get("/lectures", studentAuthM, Student.listLectureTitles);
-router.get("/s/lectures/phone/:id", studentAuthMobile, Student.getLectureForStudent);
+router.get("/lec/p", studentAuthMobile, Student.getPaidLecturesForStudent);
 
 
 // router.post(

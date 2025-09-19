@@ -323,3 +323,51 @@ export const loginMobile = asyncHandler(async (req, res, next) => {
 
   res.status(200).json({ message: "Login successful", token });
 });
+
+
+
+export const getPaidLecturesForStudent = asyncHandler(async (req, res, next) => {
+  const rawStudentId = req.studentMobile?._id || req.studentMobile?.id;
+  console.log(req.studentMobile)
+  console.log(rawStudentId)
+  if (!rawStudentId) {
+    return next(new Error("Unauthorized (student missing)", { cause: 401 }));
+  }
+
+  const sid = new mongoose.Types.ObjectId(String(rawStudentId));
+
+  // هات كل الدفع الموافق عليه للطالب
+  const approvedPayments = await Payment.find({
+    studentId: sid,
+    status: "approved",
+  })
+    .select("lectureId")
+    .lean();
+
+  if (!approvedPayments.length) {
+    return res.status(200).json([]); // مفيش محاضرات مدفوعة
+  }
+
+  const lectureIds = approvedPayments.map((p) => p.lectureId);
+
+  // هات بيانات المحاضرات اللي اتدفعت
+  const lectures = await Lecture.find({ _id: { $in: lectureIds } })
+    .select("title price order img description videos")
+    .lean();
+
+  // رجّع الفيديو الأول بس لو عايز
+  const data = lectures.map((lec) => ({
+    id: lec._id,
+    title: lec.title,
+    price: lec.price,
+    order: lec.order,
+    img: lec.img,
+    description: lec.description,
+    video:
+      Array.isArray(lec.videos) && lec.videos.length
+        ? { url: lec.videos[0].url }
+        : null,
+  }));
+
+  return res.status(200).json(data);
+});

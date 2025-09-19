@@ -29,7 +29,7 @@ export const studentAuthMobile = asyncHandler(async (req, res, next) => {
   const student = await Student.findById(decoded.id);
   if (!student) return next(new Error("Student not found", { cause: 404 }));
 
-  req.student = student;
+  req.studentMobile = student;
   req.token = raw;
   next();
 });
