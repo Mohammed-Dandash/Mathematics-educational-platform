@@ -73,9 +73,8 @@ export const examsByLecture = asyncHandler(async (req, res, next) => {
 });
 
 export const submitExam = asyncHandler(async (req, res, next) => {
-  const studentId = req.user.id;
+  const studentId = req.student.id;
   const { examId, answers } = req.body;
-  const user = req.user;
 
   const exam = await Exam.findById(examId).populate("lecture");
   if (!exam) {
@@ -85,6 +84,7 @@ export const submitExam = asyncHandler(async (req, res, next) => {
   let correctCount = 0;
   const detailedAnswers = [];
 
+  // تصحيح الإجابات
   for (const submitted of answers) {
     const original = exam.questions.find(
       (q) => q.question === submitted.question
@@ -111,45 +111,71 @@ export const submitExam = asyncHandler(async (req, res, next) => {
     });
   }
 
+  // الأسئلة اللي متجاوبتش
   for (const original of exam.questions) {
-    const answered = answers.find((a) => a.question === original.question);
+    const answered = answers.find(
+      (a) => a.question === original.question
+    );
     if (!answered) {
       detailedAnswers.push({
         question: original.question,
         chosenAnswer: null,
         isCorrect: false,
         notAnswered: true,
-        message: "لم يتم الاجابة على هذا السؤال",
+        message: "لم يتم الإجابة على هذا السؤال",
       });
     }
   }
 
   const totalQuestions = exam.questions.length;
   const score = correctCount;
+  const percentage = (score / totalQuestions) * 100;
 
   await ExamResult.create({
     studentId,
     examId,
     score,
     totalQuestions,
+    percentage,
     answers: detailedAnswers,
   });
 
-  const passed = score / totalQuestions >= 0.5;
+  const passed = percentage >= 50;
 
   if (passed) {
     await StudentProgress.findOneAndUpdate(
-      { studentId: studentId, lectureId: exam.lecture._id },
+      { studentId, lectureId: exam.lecture._id },
       { examDone: true },
       { upsert: true, new: true }
     );
+  }
+
+  // 🟢 منطق التحفيز
+  let motivationMessage = "";
+  let motivationLevel = "";
+
+  if (percentage >= 90) {
+    motivationLevel = "excellent";
+    motivationMessage = "مستوى ممتاز جدًا 🔥 أداء احترافي، كمّل بنفس القوة!";
+  } else if (percentage >= 75) {
+    motivationLevel = "very_good";
+    motivationMessage = "شغل عالي 👏 فاضلك خطوة وتبقى من الأوائل";
+  } else if (percentage >= 50) {
+    motivationLevel = "good";
+    motivationMessage = "نتيجة كويسة 👍 ركّز شوية وهتوصل للأفضل";
+  } else {
+    motivationLevel = "needs_improvement";
+    motivationMessage = "متحبطش 💪 راجع وحاول تاني، النجاح قرب";
   }
 
   res.status(200).json({
     message: "تم تقديم الاختبار بنجاح",
     score,
     totalQuestions,
+    percentage,
     passed,
+    motivationLevel,
+    motivationMessage,
     detailedAnswers,
   });
 });

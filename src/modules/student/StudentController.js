@@ -6,6 +6,7 @@ import { Token } from "../../../DB/models/token.model.js";
 import { StudentToken } from "../../../DB/models/tokenstudent.js";
 import { Payment } from "../../../DB/models/payment.js";
 import { AssignmentSubmission } from "../../../DB/models/assismentResult.js";
+import { Branch } from "../../../DB/models/branch.js";
 import { Assignment } from "../../../DB/models/assisment.js";
 import jwt from "jsonwebtoken"
 import mongoose from "mongoose";
@@ -164,25 +165,28 @@ console.log(token)
 });
 
 export const listLectureTitles = asyncHandler(async (req, res, next) => {
-  const { yearId } = req.query;
+  const { branchId } = req.query;
 
-  if (!yearId) {
-    return next(new Error("yearId is required", { cause: 400 }));
+  if (!branchId) {
+    return next(new Error("branchId is required", { cause: 400 }));
   }
 
-  const yearExists = await Year.exists({ _id: yearId });
-  if (!yearExists) {
-    return next(new Error("Year not found", { cause: 404 }));
+  if (!mongoose.Types.ObjectId.isValid(branchId)) {
+    return next(new Error("Invalid branchId", { cause: 400 }));
   }
 
-  const lectures = await Lecture.find({ year: yearId })
-    .sort({  createdAt: 1 })
+  const branchExists = await Branch.exists({ _id: branchId });
+  if (!branchExists) {
+    return next(new Error("Branch not found", { cause: 404 }));
+  }
+
+  const lectures = await Lecture.find({ branch: branchId })
+    .sort({ createdAt: 1 })
     .lean();
-
-
 
   return res.status(200).json(lectures);
 });
+
 
 export const getLectureForStudent = asyncHandler(async (req, res, next) => {
   // لازم الراوت ده يكون وراه studentAuth
@@ -240,41 +244,49 @@ export const getLectureForStudent = asyncHandler(async (req, res, next) => {
   return res.status(403).json(response);
 });
 
-// export const submitAssignmentImages = asyncHandler(async (req, res, next) => {
-//   const studentId = req.student?.id;
-//   const { lectureId } = req.params;
+// import path from "path";
 
-//   if (!studentId)   return next(new Error("Unauthorized", { cause: 401 }));
-//   if (!lectureId)   return next(new Error("lectureId is required", { cause: 400 }));
+export const submitAssignmentImages = asyncHandler(async (req, res, next) => {
+  const studentId = req.student?.id;
+  const { lectureId } = req.params;
 
-//   const lecture = await Lecture.findById(lectureId, { title: 1 }).lean();
-//   if (!lecture)     return next(new Error("Lecture not found", { cause: 404 }));
+  if (!studentId) return next(new Error("Unauthorized", { cause: 401 }));
+  if (!lectureId) return next(new Error("lectureId is required", { cause: 400 }));
 
-//   if (!req.files || req.files.length === 0) {
-//     return next(new Error("At least one image is required", { cause: 400 }));
-//   }
+  const lecture = await Lecture.findById(lectureId, { title: 1 }).lean();
+  if (!lecture) return next(new Error("Lecture not found", { cause: 404 }));
 
-//   const images = req.files.map((f) => f.path);
+  if (!req.files || req.files.length === 0) {
+    return next(new Error("At least one image is required", { cause: 400 }));
+  }
 
-//   const sub = await AssignmentSubmission.create({
-//     studentId,
-//     lectureId,
-//     images,
-//     status: "submitted",
-//   });
+  // نخلي الباث من أول "uploads"
+  const images = req.files.map((f) => {
+    const idx = f.path.indexOf("uploads");
+    return idx !== -1 ? f.path.slice(idx) : f.path;
+  });
 
-//   const student = await Student.findById(studentId, { name: 1 }).lean();
+  const sub = await AssignmentSubmission.create({
+    studentId,
+    lectureId,
+    images,
+    status: "submitted",
+  });
 
-//   return res.status(201).json({
-//     message: "تم استلام الواجب بنجاح",
-//     studentName: student?.name || null,
-//     lectureId,
-//     lectureTitle: lecture.title,
-//     imagesCount: images.length,
-//     status: sub.status, 
-//     createdAt: sub.createdAt,
-//   });
-// });
+  const student = await Student.findById(studentId, { name: 1 }).lean();
+
+  return res.status(201).json({
+    message: "تم استلام الواجب بنجاح",
+    studentName: student?.name || null,
+    lectureId,
+    lectureTitle: lecture.title,
+    imagesCount: images.length,
+    status: sub.status,
+    createdAt: sub.createdAt,
+    images: sub.images, // رجّع المسارات بعد التعديل
+  });
+});
+
 
 import { StudentTokenMobile } from "../../../DB/models/studentToken.js";
 export const loginMobile = asyncHandler(async (req, res, next) => {

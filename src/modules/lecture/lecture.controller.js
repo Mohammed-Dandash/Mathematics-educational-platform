@@ -4,6 +4,7 @@ import { Year } from "../../../DB/models/year.js";
 import mongoose from "mongoose";
 import { Exam } from "./../../../DB/models/exam.js";
 import { StudentProgress } from "./../../../DB/models/studentProgress.js";
+import { Branch } from "../../../DB/models/branch.js";
 
 export const years = asyncHandler(async (req, res, next) => {
   const user = req.user;
@@ -13,12 +14,14 @@ export const years = asyncHandler(async (req, res, next) => {
   }
 
   const years = await Year.find();
+
   res.status(200).json({
     success: true,
     count: years.length,
     data: years,
   });
 });
+
 
 export const addLecture = asyncHandler(async (req, res, next) => {
   const user = req.user;
@@ -27,23 +30,24 @@ export const addLecture = asyncHandler(async (req, res, next) => {
     return next(new Error("انت لا تملك الصلاحية المطلوبة", { cause: 403 }));
   }
 
-  const { title, year, order, description, price } = req.body;
+  const { title, branch, order, description, price } = req.body;
 
-  if (!title || !year || order === undefined) {
-    return next(new Error("Title, year and order مطلوب", { cause: 400 }));
+  if (!title || !branch || order === undefined) {
+    return next(
+      new Error("title و branch و order مطلوبين", { cause: 400 })
+    );
   }
+
   if (!req.file) {
     return next(new Error("الصورة مطلوبة", { cause: 400 }));
   }
-  let imgUrl = "";
-  if (req.file) {
-    const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
-    imgUrl = `${BASE_URL}/uploads/lectures_pics/${req.file.filename}`;
-  }
+
+  const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
+  const imgUrl = `${BASE_URL}/uploads/lectures_pics/${req.file.filename}`;
 
   const lecture = await Lecture.create({
     title,
-    year,
+    branch,
     order,
     description,
     price,
@@ -59,6 +63,7 @@ export const addLecture = asyncHandler(async (req, res, next) => {
 
 export const addVideo = asyncHandler(async (req, res, next) => {
   const user = req.user;
+
   if (user.role !== "admin") {
     return next(new Error("انت لا تملك الصلاحية المطلوبة", { cause: 403 }));
   }
@@ -66,11 +71,8 @@ export const addVideo = asyncHandler(async (req, res, next) => {
   const { lectureId } = req.params;
   const { title, url } = req.body;
 
-  if (!title) {
-    return next(new Error("العنوان مطلوب", { cause: 400 }));
-  }
-  if (!url) {
-    return next(new Error("رابط الفيديو مطلوب", { cause: 400 }));
+  if (!title || !url) {
+    return next(new Error("العنوان و رابط الفيديو مطلوبين", { cause: 400 }));
   }
 
   const lecture = await Lecture.findById(lectureId);
@@ -79,27 +81,32 @@ export const addVideo = asyncHandler(async (req, res, next) => {
   }
 
   lecture.videos.push({ title, url });
-
   await lecture.save();
+
   res.status(201).json({
     message: "تم اضافة الفيديو بنجاح",
   });
 });
 
-export const lecturesByYear = asyncHandler(async (req, res, next) => {
-  const { yearId } = req.params;
+
+export const lecturesByBranch = asyncHandler(async (req, res, next) => {
+  const { branchId } = req.params;
   const user = req.user;
 
   if (user.role !== "admin" && user.role !== "assistant") {
     return next(new Error("انت لا تملك الصلاحية المطلوبة", { cause: 403 }));
   }
 
-  if (!yearId) {
-    return next(new Error("Year ID مطلوب", { cause: 400 }));
+  if (!branchId) {
+    return next(new Error("Branch ID مطلوب", { cause: 400 }));
   }
 
-  const lectures = await Lecture.find({ year: yearId })
-    .populate("year", "name")
+  if (!mongoose.Types.ObjectId.isValid(branchId)) {
+    return next(new Error("Branch ID غير صالح", { cause: 400 }));
+  }
+
+  const lectures = await Lecture.find({ branch: branchId })
+    .populate("branch", "name")
     .sort({ order: 1 });
 
   res.status(200).json({
@@ -109,13 +116,16 @@ export const lecturesByYear = asyncHandler(async (req, res, next) => {
   });
 });
 
+
 export const allLecture = asyncHandler(async (req, res, next) => {
   const user = req.user;
+
   if (user.role !== "admin" && user.role !== "assistant") {
     return next(new Error("انت لا تملك الصلاحية المطلوبة", { cause: 403 }));
   }
 
-  const lectures = await Lecture.find();
+  const lectures = await Lecture.find().populate("branch", "name");
+
   res.status(200).json({
     success: true,
     count: lectures.length,
@@ -123,17 +133,26 @@ export const allLecture = asyncHandler(async (req, res, next) => {
   });
 });
 
+
 export const lecture = asyncHandler(async (req, res, next) => {
   const user = req.user;
+
   if (user.role !== "admin" && user.role !== "assistant") {
     return next(new Error("انت لا تملك الصلاحية المطلوبة", { cause: 403 }));
   }
+
   const { lectureId } = req.params;
+
   if (!lectureId) {
     return next(new Error("Lecture ID مطلوب", { cause: 400 }));
   }
 
-  const lecture = await Lecture.findById(lectureId).populate("year");
+  if (!mongoose.Types.ObjectId.isValid(lectureId)) {
+    return next(new Error("Lecture ID غير صالح", { cause: 400 }));
+  }
+
+  const lecture = await Lecture.findById(lectureId).populate("branch");
+
   if (!lecture) {
     return next(new Error("المحاضرة غير موجودة", { cause: 404 }));
   }
@@ -144,23 +163,21 @@ export const lecture = asyncHandler(async (req, res, next) => {
   });
 });
 
+
 export const deleteVideo = asyncHandler(async (req, res, next) => {
   const user = req.user;
+
   if (user.role !== "admin") {
     return next(new Error("انت لا تملك الصلاحية المطلوبة", { cause: 403 }));
   }
 
   const { lectureId, videoId } = req.params;
 
-  if (!lectureId || !videoId) {
-    return next(new Error("Lecture ID and Video ID مطلوبين", { cause: 400 }));
-  }
-
   if (
     !mongoose.Types.ObjectId.isValid(lectureId) ||
     !mongoose.Types.ObjectId.isValid(videoId)
   ) {
-    return next(new Error("طريقة غير صحيحة", { cause: 400 }));
+    return next(new Error("ID غير صالح", { cause: 400 }));
   }
 
   const lecture = await Lecture.findById(lectureId);
@@ -168,36 +185,34 @@ export const deleteVideo = asyncHandler(async (req, res, next) => {
     return next(new Error("المحاضرة غير موجودة", { cause: 404 }));
   }
 
-  const videoIndex = lecture.videos.findIndex(
+  const index = lecture.videos.findIndex(
     (v) => v._id.toString() === videoId
   );
-  if (videoIndex === -1) {
-    return next(new Error("الفيديو غير موجود في المحاضرة", { cause: 404 }));
+
+  if (index === -1) {
+    return next(new Error("الفيديو غير موجود", { cause: 404 }));
   }
 
-  lecture.videos.splice(videoIndex, 1);
-
+  lecture.videos.splice(index, 1);
   await lecture.save();
 
   res.status(200).json({
     message: "تم حذف الفيديو بنجاح",
-    lecture,
   });
 });
 
+
 export const deleteLecture = asyncHandler(async (req, res, next) => {
   const user = req.user;
+
   if (user.role !== "admin") {
     return next(new Error("انت لا تملك الصلاحية المطلوبة", { cause: 403 }));
   }
 
   const { lectureId } = req.params;
 
-  if (!lectureId) {
-    return next(new Error("Lecture ID مطلوب", { cause: 400 }));
-  }
   if (!mongoose.Types.ObjectId.isValid(lectureId)) {
-    return next(new Error("طريقة غير صحيحة", { cause: 400 }));
+    return next(new Error("Lecture ID غير صالح", { cause: 400 }));
   }
 
   const lecture = await Lecture.findById(lectureId);
@@ -206,13 +221,13 @@ export const deleteLecture = asyncHandler(async (req, res, next) => {
   }
 
   await Exam.deleteMany({ lecture: lectureId });
-
   await StudentProgress.deleteMany({ lectureId });
 
   await Lecture.findByIdAndDelete(lectureId);
 
   res.status(200).json({
     success: true,
-    message: "تم حذف المحاضرة و كل ما يتعلق بها بنجاح",
+    message: "تم حذف المحاضرة وكل ما يتعلق بها بنجاح",
   });
 });
+

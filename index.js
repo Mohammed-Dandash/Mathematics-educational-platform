@@ -7,9 +7,12 @@ import lectureRouter from "./src/modules/lecture/lecture.router.js";
 import examRouter from "./src/modules/exam/exam.router.js";
 import routerPayment from "./src/modules/payments/payment.route.js";
 import router from "./src/modules/student/Student.js";
+import routerBranch from "./src/modules/branches/branchRoute.js";
 import cors from "cors";
 
 dotenv.config();
+console.log(process.env.MONGO_URI); // لازم يطبع URI الجديد
+
 const app = express();
 connectDB();
 const __dirname = path.resolve();
@@ -27,6 +30,7 @@ app.use("/lecture", lectureRouter);
 app.use("/exam", examRouter);
 app.use("/payment", routerPayment);
 app.use("/student", router);
+app.use("/branch", routerBranch);
 app.get("/", (req, res) => res.send("Hello in Our Platform"));
 app.use((err, req, res, next) => {
   const status =

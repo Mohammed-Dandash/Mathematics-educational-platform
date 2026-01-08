@@ -17,7 +17,7 @@ router.post(
 
 router.patch("/:lectureId/videos", auth, lectureController.addVideo);
 router.get("/getAllLecture", auth, lectureController.allLecture);
-router.get("/lectures/:yearId", auth, lectureController.lecturesByYear);
+router.get("/lectures/:branchId", auth, lectureController.lecturesByBranch);
 router.get("/lecture/:lectureId", auth, lectureController.lecture);
 
 router.delete(

@@ -27,5 +27,5 @@ routerPayment.patch(
 
   paymentController.updatePaymentStatus
 );
-
+routerPayment.get('/getAssigment',auth,paymentController.listAssignments)
 export default routerPayment;

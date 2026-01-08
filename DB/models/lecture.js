@@ -6,8 +6,15 @@ const lectureSchema = new Schema(
     description: { type: String, required: true },
     img: { type: String, required: true },
     price: { type: Number, required: true },
-    year: { type: Types.ObjectId, ref: "Year", required: true },
+
+    branch: {
+      type: Types.ObjectId,
+      ref: "Branch",
+      required: true,
+    },
+
     order: { type: Number, required: true },
+
     videos: [
       {
         title: { type: String, required: true },
@@ -15,7 +22,7 @@ const lectureSchema = new Schema(
         uploadedAt: { type: Date, default: Date.now },
       },
     ],
-    amount: String,
+  amount: String,
   },
   { timestamps: true }
 );

@@ -21,12 +21,12 @@ router.get("/s/lectures/:id", studentAuth, Student.getLectureForStudent);
 router.get("/lec/p", studentAuthMobile, Student.getPaidLecturesForStudent);
 
 
-// router.post(
-//   "/assignments/:lectureId/submit",
-//   studentAuth,
-//   upload.array("images", 30),
-//   Student.submitAssignmentImages
-// );
+router.post(
+  "/assignments/:lectureId/submit",
+  studentAuth,
+  upload.array("images", 30),
+  Student.submitAssignmentImages
+);
 router.post('/login/mobile',Student.loginMobile)
 
 export default router;

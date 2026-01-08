@@ -3,6 +3,8 @@ import Student from "../../../DB/models/Student.js"
 import { Lecture } from "../../../DB/models/lecture.js";
 import { Payment } from "../../../DB/models/payment.js";
 import fs from "fs/promises";
+import { Branch } from "../../../DB/models/branch.js";
+import { AssignmentSubmission } from "../../../DB/models/assismentResult.js";
 
 import path from "path";
 
@@ -10,6 +12,18 @@ const toUploadsRelative = (p) => {
   if (!p || typeof p !== "string") return p;
   const norm = p.replace(/\\/g, "/"); // لو ويندوز
   return norm.replace(/^.*uploads\//, "uploads/");
+};
+
+const toFullImageUrl = (imagePath, req) => {
+  if (!imagePath || typeof imagePath !== "string") return imagePath;
+  const relativePath = imagePath.replace(/^.*uploads[\\/]/, "uploads/");
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  return `${baseUrl}/${relativePath}`;
+};
+
+const toFullImageUrls = (imagePaths, req) => {
+  if (!Array.isArray(imagePaths)) return imagePaths;
+  return imagePaths.map(img => toFullImageUrl(img, req));
 };
 
 export const createPaymentWithReceipt = asyncHandler(async (req, res, next) => {
@@ -82,7 +96,7 @@ export const createPaymentWithReceipt = asyncHandler(async (req, res, next) => {
       lectureTitle: lec.title,
       studentName: stuDoc.name,
       status: lastPayment.status,
-      image: lastPayment.image,
+      image: toFullImageUrls(lastPayment.image, req),
     });
   }
 
@@ -106,7 +120,7 @@ export const createPaymentWithReceipt = asyncHandler(async (req, res, next) => {
       lectureTitle: lec.title,
       studentName: stuDoc.name,
       status: payment.status,
-      image: payment.image,
+      image: toFullImageUrls(payment.image, req),
     });
   }
 
@@ -123,7 +137,7 @@ export const createPaymentWithReceipt = asyncHandler(async (req, res, next) => {
     lectureTitle: lec.title,
     studentName: stuDoc.name,
     status: payment.status,
-    image: payment.image,
+    image: toFullImageUrls(payment.image, req),
   });
 });
 
@@ -281,7 +295,7 @@ export const updatePaymentStatus = asyncHandler(async (req, res, next) => {
   const [student, lecture] = await Promise.all([
     Student.findById(payment.studentId, { name: 1 }).lean(),
     Lecture.findById(payment.lectureId, { title: 1 })
-           .populate({ path: "year", select: "name" })
+           .populate({ path: "branch", select: "name" })
            .lean(),
   ]);
 
@@ -297,6 +311,69 @@ export const updatePaymentStatus = asyncHandler(async (req, res, next) => {
     note: payment.note || null,
     reviewedAt: payment.reviewedAt,
     reviewedBy: payment.reviewedBy,
-    img:payment.image
+    img: toFullImageUrls(payment.image, req)
+  });
+});
+function toFullImageUr(files = [], req) {
+  if (!files || !Array.isArray(files)) return [];
+
+  // host + protocol
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
+
+  return files.map(f => {
+    // نتأكد إن الـ path بيبدأ من uploads
+    let cleanPath = f;
+    if (f.startsWith("uploads/")) {
+      cleanPath = f;
+    } else if (f.includes("uploads/")) {
+      cleanPath = f.substring(f.indexOf("uploads/"));
+    }
+    return `${baseUrl}/${cleanPath}`;
+  });
+}
+
+
+export const listAssignments = asyncHandler(async (req, res, next) => {
+  const { page = 1, limit = 10 } = req.query;
+
+  const pageNumber = Math.max(1, parseInt(page, 10));
+  const pageSize = Math.max(1, parseInt(limit, 10));
+  const skip = (pageNumber - 1) * pageSize;
+
+  const total = await AssignmentSubmission.countDocuments();
+
+  const assignments = await AssignmentSubmission.find()
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(pageSize)
+    .populate([
+      { path: "studentId", select: "name" },
+      {
+        path: "lectureId",
+        select: "title year",
+        populate: { path: "year", select: "name" },
+      },
+    ])
+    .lean();
+
+    console.log(assignments);
+    const data = assignments.map((a) => ({
+      assignmentId: a._id,
+      studentId: a.studentId?._id || null,
+      studentName: a.studentId?.name || null,
+      lectureId: a.lectureId?._id || null,
+      lectureTitle: a.lectureId?.title || null,
+      yearName: a.lectureId?.year?.name || null,
+      images: a.images,   // الصور كلها روابط كاملة
+      createdAt: a.createdAt,
+    }));
+    
+
+  return res.status(200).json({
+    total,
+    page: pageNumber,
+    pages: Math.ceil(total / pageSize),
+    limit: pageSize,
+    data,
   });
 });
