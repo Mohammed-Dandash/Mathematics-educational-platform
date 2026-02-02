@@ -10,6 +10,8 @@ import { Branch } from "../../../DB/models/branch.js";
 import { Assignment } from "../../../DB/models/assisment.js";
 import jwt from "jsonwebtoken"
 import mongoose from "mongoose";
+import { LectureAccess } from "../../../DB/models/LectureAccess.js";
+
 export const register = asyncHandler(async (req, res, next) => {
   const {
     name, age, email, password,
@@ -336,38 +338,73 @@ export const loginMobile = asyncHandler(async (req, res, next) => {
   res.status(200).json({ message: "Login successful", token });
 });
 
+export const grantLectureAccessByCode = asyncHandler(async (req, res, next) => {
+  const { studentCode, lectureId } = req.body;
+
+  const student = await Student.findOne({ studentCode });
+  if (!student) {
+    return next(new Error("Student not found", { cause: 404 }));
+  }
+
+  await LectureAccess.findOneAndUpdate(
+    {
+      studentId: student._id,
+      lectureId,
+    },
+    {
+      studentId: student._id,
+      lectureId,
+      grantedBy: "admin",
+      grantedByUser: req.user._id,
+    },
+    { upsert: true, new: true }
+  );
+
+  return res.status(200).json({
+    message: "Lecture access granted successfully",
+  });
+});
 
 
 export const getPaidLecturesForStudent = asyncHandler(async (req, res, next) => {
   const rawStudentId = req.studentMobile?._id || req.studentMobile?.id;
-  console.log(req.studentMobile)
-  console.log(rawStudentId)
+
   if (!rawStudentId) {
-    return next(new Error("Unauthorized (student missing)", { cause: 401 }));
+    return next(new Error("Unauthorized", { cause: 401 }));
   }
 
   const sid = new mongoose.Types.ObjectId(String(rawStudentId));
 
-  // هات كل الدفع الموافق عليه للطالب
-  const approvedPayments = await Payment.find({
+  // 1️⃣ المحاضرات المدفوعة
+  const paidLectureIds = await Payment.find({
     studentId: sid,
     status: "approved",
-  })
-    .select("lectureId")
-    .lean();
+  }).distinct("lectureId");
 
-  if (!approvedPayments.length) {
-    return res.status(200).json([]); // مفيش محاضرات مدفوعة
+  // 2️⃣ المحاضرات المضافة يدويًا
+  const manualLectureIds = await LectureAccess.find({
+    studentId: sid,
+  }).distinct("lectureId");
+
+  // 3️⃣ دمج الاتنين بدون تكرار
+  const lectureIds = [
+    ...new Set([
+      ...paidLectureIds.map((id) => id.toString()),
+      ...manualLectureIds.map((id) => id.toString()),
+    ]),
+  ];
+
+  if (!lectureIds.length) {
+    return res.status(200).json([]);
   }
 
-  const lectureIds = approvedPayments.map((p) => p.lectureId);
-
-  // هات بيانات المحاضرات اللي اتدفعت
-  const lectures = await Lecture.find({ _id: { $in: lectureIds } })
+  // 4️⃣ جلب بيانات المحاضرات
+  const lectures = await Lecture.find({
+    _id: { $in: lectureIds },
+  })
     .select("title price order img description videos")
     .lean();
 
-  // رجّع الفيديو الأول بس لو عايز
   const data = lectures.map((lec) => ({
     id: lec._id,
     title: lec.title,
