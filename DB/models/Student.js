@@ -2,7 +2,8 @@ import mongoose from "mongoose";
 import validator from "validator";
 import bcrypt from "bcrypt";         // ← مهم
 import jwt from "jsonwebtoken";        // لو بتستخدم generateAuthToken
-import nodemailer from "nodemailer";   // لو بتستخدم sendVerificationCodeEmail
+import nodemailer from "nodemailer";
+import crypto from "crypto";   // لو بتستخدم sendVerificationCodeEmail
 
 // import validator from './../../node_modules/validator/es/index';
 const studentSchema = new mongoose.Schema({
@@ -48,6 +49,10 @@ const studentSchema = new mongoose.Schema({
             }
         }
     },
+    studentCode: {
+        type: String,
+        unique: true
+    },    
     parent_phone_number : {
         type: String,
         required: true,
@@ -76,7 +81,14 @@ const studentSchema = new mongoose.Schema({
     },
 
 });
+studentSchema.pre("save", function (next) {
+    if (this.studentCode) return next();
 
+    const randomCode = crypto.randomBytes(3).toString("hex").toUpperCase();
+    this.studentCode = `STD-${randomCode}`;
+
+    next();
+});
 
 
 studentSchema.methods.toJSON = function() {
