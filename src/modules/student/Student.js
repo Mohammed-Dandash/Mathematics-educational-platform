@@ -12,8 +12,8 @@ router.post("/register", Student.register);
 router.post("/reset-password", Student.resetPassword);
 router.post("/verification-code", Student.verificationCode);
 router.post("/set-new-password", Student.setNewPassword);
-router.get("/years", studentAuth, Student.listYears);
-
+router.get("/years", Student.listYears);
+router.get("/lectures/:branchId", Student.getLectureByBranceID);
 router.get("/lectures", studentAuth, Student.listLectureTitles);
 router.post("/grant-lecture-access", auth, Student.grantLectureAccessByCode);
 router.get("/s/lectures/:id", studentAuth, Student.getLectureForStudent);

@@ -4,7 +4,7 @@ import { auth } from "../../middleware/auth.middleware.js";
 import { studentAuth } from "../../middleware/authstudent.js";
 const routerBranch = express.Router();    
 routerBranch.post("/createBranch",auth, branchController.createBranch);
-routerBranch.get("/year/:yearId",studentAuth, branchController.getBranchesByYear); 
+routerBranch.get("/year/:yearId", branchController.getBranchesByYear); 
 routerBranch.put("/:id", auth, branchController.updateBranch);
 routerBranch.delete("/:id", auth, branchController.deleteBranch);
 routerBranch.get("/yearId/year/:yearId/simple", auth, branchController.getBranchIdsAndNamesByYear);

@@ -105,6 +105,11 @@ studentSchema.methods.toJSON = function() {
 
 // Method to send verification code email
 studentSchema.methods.sendVerificationCodeEmail = async function(verificationCode) {
+    // التحقق من وجود بيانات البريد الإلكتروني
+    if (!process.env.EMAIL || !process.env.PASSWORD) {
+        throw new Error("Email configuration is missing. Please set EMAIL and PASSWORD environment variables.");
+    }
+
     const transporter = nodemailer.createTransport({
         service: "gmail",
         auth: {

@@ -11,49 +11,64 @@ import { Assignment } from "../../../DB/models/assisment.js";
 import jwt from "jsonwebtoken"
 import mongoose from "mongoose";
 import { LectureAccess } from "../../../DB/models/LectureAccess.js";
+import bcrypt from "bcryptjs";
 
 export const register = asyncHandler(async (req, res, next) => {
   const {
     name, age, email, password,
     phone_number, nationalId, parent_phone_number, Grade
   } = req.body;
+
+  if (!password || password.length < 6) {
+    return next(new Error("Password must be at least 6 characters", { cause: 400 }));
+  }
+
   const passwordHash = await bcrypt.hash(
-      password,
-      parseInt(process.env.SALT_ROUNDS)
-    );
+    password,
+    parseInt(process.env.SALT_ROUNDS || 10)
+  );
 
   const student = await Student.create({
-   ...req.body,password:passwordHash
+    ...req.body,
+    password: passwordHash
   });
 
   return res.status(201).json({ message: "Student registered", student });
 });
 
 // ============ Login (Student one device) ============
-// controllers/student.controller.js
-import bcrypt from "bcryptjs"; // استخدم bcryptjs علشان الويندوز
-
-
 import { env as ENV } from "process";
 
 export const login = asyncHandler(async (req, res, next) => {
   const { email, password, deviceId } = req.body;
-  if (!email || !password)
+  
+  if (!email || !password) {
     return next(new Error("email and password are required", { cause: 400 }));
+  }
 
+  // جلب الطالب مع password (حتى لو كان select: false)
   const student = await Student.findOne({ email }).select("+password");
-  if (!student)
+  if (!student) {
     return next(new Error("email or password is wrong", { cause: 400 }));
+  }
 
-  const ok = await bcrypt.compare(password, student.password);
-  if (!ok)
+  // التحقق من وجود password
+  if (!student.password) {
     return next(new Error("email or password is wrong", { cause: 400 }));
+  }
+
+  // مقارنة كلمة المرور
+  const ok = await bcrypt.compare(password, student.password);
+  if (!ok) {
+    return next(new Error("email or password is wrong", { cause: 400 }));
+  }
 
   const JWT_SECRET = ENV.JWT_SECRET || ENV.SECRET_KEY;
-  if (!JWT_SECRET)
+  if (!JWT_SECRET) {
     return next(new Error("Server misconfigured: JWT_SECRET is missing", { cause: 500 }));
+  }
 
-  const ttlDays   = Number(ENV.JWT_TTL_DAYS || 7);
+  const ttlDays = Number(ENV.JWT_TTL_DAYS || 7);
   const expiredAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
 
   const token = jwt.sign(
@@ -62,7 +77,10 @@ export const login = asyncHandler(async (req, res, next) => {
   );
 
   // جهاز واحد: عطّل أي توكنات صالحة قديمة
-  await StudentToken.updateMany({ student: student._id, isValid: true }, { $set: { isValid: false } });
+  await StudentToken.updateMany(
+    { student: student._id, isValid: true },
+    { $set: { isValid: false } }
+  );
 
   // خزّن التوكن الجديد
   await StudentToken.create({
@@ -75,13 +93,17 @@ export const login = asyncHandler(async (req, res, next) => {
     ip: req.ip || req.socket?.remoteAddress || null,
   });
 
-  return res.status(200).json({ message: "Login successful", token });
+  return res.status(200).json({ message: "Login successful", student, token });
 });
 
 // ------------------ RESET CODE (زي ما هو) ------------------
 export const resetPassword = async (req, res) => {
   try {
     const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
     const student = await Student.findOne({ email });
     if (!student) return res.status(404).json({ message: "Student not found" });
 
@@ -90,8 +112,21 @@ export const resetPassword = async (req, res) => {
     student.verificationCodeExpiry = Date.now() + 15 * 60 * 1000;
     await student.save();
 
-    await student.sendVerificationCodeEmail(verificationCode);
-    res.status(200).json({ message: "Verification code sent" });
+    // محاولة إرسال البريد الإلكتروني
+    try {
+      await student.sendVerificationCodeEmail(verificationCode);
+      return res.status(200).json({ message: "Verification code sent to email" });
+    } catch (emailError) {
+      // إذا لم تكن إعدادات البريد موجودة، أرجع الكود مباشرة (للتطوير)
+      if (emailError.message.includes("Email configuration is missing")) {
+        return res.status(200).json({ 
+          message: "Verification code generated (email not configured)", 
+          verificationCode: verificationCode // فقط للتطوير
+        });
+      }
+      // إذا كان هناك خطأ آخر في البريد، أرميه
+      throw emailError;
+    }
   } catch (error) {
     res.status(500).json({ message: "Error resetting password", error: error.message });
   }
@@ -124,7 +159,9 @@ export const setNewPassword = async (req, res) => {
       return res.status(400).json({ message: "Invalid or expired verification code" });
     }
 
-    student.password = password; // pre-save hook هيعمل hash
+    // عمل hash للباسورد قبل الحفظ
+    const passwordHash = await bcrypt.hash(password, parseInt(process.env.SALT_ROUNDS || 10));
+    student.password = passwordHash;
     student.verificationCode = undefined;
     student.verificationCodeExpiry = undefined;
     await student.save();
@@ -154,17 +191,66 @@ export const logout = async (req, res) => {
   }
 }
 export const listYears = asyncHandler(async (req, res, next) => {
-    console.log("vvv")
-      let { token } = req.headers;
-console.log(token)
   const yearsDocs = await Year.find().sort({ order: 1, createdAt: 1 }).lean();
   const years = yearsDocs.map(y => ({
     id: y._id,
     name: y.name,
     order: y.order ?? null,
   }));
+  
+  // ترتيب السنوات بناءً على الاسم
+  const getYearOrder = (name) => {
+    if (name.includes('أولى')) return 1;
+    if (name.includes('تانية') || name.includes('ثانية')) return 2;
+    if (name.includes('تالتة') || name.includes('ثالثة')) return 3;
+    return 999; // أي أسماء أخرى في النهاية
+  };
+  
+  years.sort((a, b) => {
+    // إذا كان order موجود، استخدمه
+    if (a.order !== null && b.order !== null) {
+      return a.order - b.order;
+    }
+    if (a.order !== null) return -1;
+    if (b.order !== null) return 1;
+    // إذا كان order null، رتب بناءً على الاسم
+    return getYearOrder(a.name) - getYearOrder(b.name);
+  });
+  
   return res.status(200).json(years);
 });
+
+export const getLectureByBranceID = asyncHandler(async (req, res, next) => {
+  const { branchId } = req.params;
+  const { search } = req.query;
+  
+  if (!mongoose.Types.ObjectId.isValid(branchId)) {
+    return next(new Error("Invalid branchId", { cause: 400 }));
+  }
+  
+  const branchExists = await Branch.exists({ _id: branchId });
+  if (!branchExists) {
+    return next(new Error("Branch not found", { cause: 404 }));
+  }
+  
+  // بناء query الشرط
+  const query = { branch: branchId };
+  
+  // إذا كان هناك بحث، أضف شرط البحث
+  if (search && search.trim()) {
+    query.$or = [
+      { title: { $regex: search.trim(), $options: "i" } },
+      { description: { $regex: search.trim(), $options: "i" } },
+    ];
+  }
+  
+  const lectures = await Lecture.find(query)
+    .sort({ order: 1, createdAt: 1 })
+    .lean();
+  
+  return res.status(200).json(lectures);
+});
+
 
 export const listLectureTitles = asyncHandler(async (req, res, next) => {
   const { branchId } = req.query;
