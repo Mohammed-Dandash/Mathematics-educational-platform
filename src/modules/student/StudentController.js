@@ -276,6 +276,7 @@ export const listLectureTitles = asyncHandler(async (req, res, next) => {
 });
 
 
+
 export const getLectureForStudent = asyncHandler(async (req, res, next) => {
   // لازم الراوت ده يكون وراه studentAuth
   const rawStudentId  = req.student?._id || req.student?.id;
@@ -289,26 +290,38 @@ export const getLectureForStudent = asyncHandler(async (req, res, next) => {
   const lid = new mongoose.Types.ObjectId(String(rawLectureId));
 
   // هات بيانات المحاضرة
-  const lec = await Lecture.findById(lid).select("-video").lean();
+  const lec = await Lecture.findById(lid).select("-videos").lean();
   if (!lec) return next(new Error("Lecture not found", { cause: 404 }));
 
   // آخر عملية دفع لنفس الطالب والمحاضرة
   const lastPayment = await Payment
-    .findOne({ studentId: sid, lectureId: lid })   // 👈 مطابق لسكيمتك
+    .findOne({ studentId: sid, lectureId: lid })
     .sort({ createdAt: -1 })
     .lean();
+
+  // التحقق من وجود LectureAccess (منح يدوي من الأدمن)
+  const lectureAccess = await LectureAccess.findOne({
+    studentId: sid,
+    lectureId: lid
+  }).lean();
+
+  // تحديد إذا كان الطالب لديه access
+  const hasAccess = 
+    lastPayment?.status === "approved" || 
+    !!lectureAccess;
 
   const response = {
     id: lec._id,
     title: lec.title,
     price: lec.price,
     order: lec.order,
-    price:lec.price,
-    img:lec.img,
-    description:lec.description
+    img: lec.img,
+    description: lec.description,
+    hasAccess: hasAccess
   };
-  if (lastPayment?.status === "approved") {
-    response.paymentStatus = "approved";
+
+  if (hasAccess) {
+    response.paymentStatus = lastPayment?.status === "approved" ? "approved" : "granted";
     return res.status(200).json(response);
   }
 
