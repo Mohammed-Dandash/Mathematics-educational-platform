@@ -356,7 +356,7 @@ export const listAssignments = asyncHandler(async (req, res, next) => {
     ])
     .lean();
 
-    console.log(assignments);
+    // console.log(assignments);
     const data = assignments.map((a) => ({
       assignmentId: a._id,
       studentId: a.studentId?._id || null,

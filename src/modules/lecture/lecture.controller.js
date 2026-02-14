@@ -30,12 +30,32 @@ export const addLecture = asyncHandler(async (req, res, next) => {
     return next(new Error("انت لا تملك الصلاحية المطلوبة", { cause: 403 }));
   }
 
-  const { title, branch, order, description, price } = req.body;
+  const { title, branch, order, description, price, year } = req.body;
 
-  if (!title || !branch || order === undefined) {
+  if (!title || !branch || order === undefined || !year) {
     return next(
-      new Error("title و branch و order مطلوبين", { cause: 400 })
+      new Error("title و branch و order و year مطلوبين", { cause: 400 })
     );
+  }
+
+  // التحقق من صحة year و branch كـ ObjectId
+  if (!mongoose.Types.ObjectId.isValid(year)) {
+    return next(new Error("year غير صحيح", { cause: 400 }));
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(branch)) {
+    return next(new Error("branch غير صحيح", { cause: 400 }));
+  }
+
+  // التحقق من وجود year و branch في قاعدة البيانات
+  const yearExists = await Year.findById(year);
+  if (!yearExists) {
+    return next(new Error("السنة الدراسية غير موجودة", { cause: 404 }));
+  }
+
+  const branchExists = await Branch.findById(branch);
+  if (!branchExists) {
+    return next(new Error("الفرع غير موجود", { cause: 404 }));
   }
 
   if (!req.file) {
@@ -47,12 +67,13 @@ export const addLecture = asyncHandler(async (req, res, next) => {
 
   const lecture = await Lecture.create({
     title,
-    branch,
-    order,
-    description,
-    price,
+    branch: new mongoose.Types.ObjectId(branch),
+    order: Number(order),
+    description: description || "",
+    price: price ? Number(price) : 0,
     img: imgUrl,
     videos: [],
+    year: new mongoose.Types.ObjectId(year),
   });
 
   res.status(201).json({
@@ -151,7 +172,7 @@ export const lecture = asyncHandler(async (req, res, next) => {
     return next(new Error("Lecture ID غير صالح", { cause: 400 }));
   }
 
-  const lecture = await Lecture.findById(lectureId).populate("branch");
+  const lecture = await Lecture.findById(lectureId).populate("branch").populate("year");
 
   if (!lecture) {
     return next(new Error("المحاضرة غير موجودة", { cause: 404 }));
@@ -163,6 +184,46 @@ export const lecture = asyncHandler(async (req, res, next) => {
   });
 });
 
+export const updateLecture = asyncHandler(async (req, res, next) => {
+  const user = req.user;
+  if (user.role !== "admin") {
+    return next(new Error("انت لا تملك الصلاحية المطلوبة", { cause: 403 }));
+  }
+  
+  const { lectureId } = req.params;
+  const { title, branch, order, description, price, year } = req.body;
+
+  if (!lectureId) {
+    return next(new Error("Lecture ID مطلوب", { cause: 400 }));
+  }
+  
+  if (!mongoose.Types.ObjectId.isValid(lectureId)) {
+    return next(new Error("Lecture ID غير صالح", { cause: 400 }));
+  }
+
+  const lecture = await Lecture.findById(lectureId);
+  if (!lecture) {
+    return next(new Error("المحاضرة غير موجودة", { cause: 404 }));
+  }
+  if (req.file) {
+    const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
+    const imgUrl = `${BASE_URL}/uploads/lectures_pics/${req.file.filename}`;
+    lecture.img = imgUrl;
+  }
+  lecture.title = title;
+  lecture.branch = branch;
+  lecture.order = order;
+  lecture.description = description;
+  lecture.price = price;
+  lecture.year = year;
+
+  await lecture.save();
+
+  res.status(200).json({
+    message: "تم تحديث المحاضرة بنجاح",
+    lecture,
+  });
+  });
 
 export const deleteVideo = asyncHandler(async (req, res, next) => {
   const user = req.user;

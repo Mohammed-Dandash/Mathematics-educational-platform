@@ -6,14 +6,14 @@ const lectureSchema = new Schema(
     description: { type: String, required: true },
     img: { type: String, required: true },
     price: { type: Number, required: true },
-
+    year: { type: Types.ObjectId, ref: "Year", required: true },
     branch: {
       type: Types.ObjectId,
       ref: "Branch",
       required: true,
     },
 
-    order: { type: Number, required: true },
+    order: { type: Number, required: true },  // لترتيب المحاضرات
 
     videos: [
       {

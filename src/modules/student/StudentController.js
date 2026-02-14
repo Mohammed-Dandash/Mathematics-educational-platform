@@ -289,7 +289,7 @@ export const getLectureForStudent = asyncHandler(async (req, res, next) => {
   const lid = new mongoose.Types.ObjectId(String(rawLectureId));
 
   // هات بيانات المحاضرة
-  const lec = await Lecture.findById(lid).lean();
+  const lec = await Lecture.findById(lid).select("-video").lean();
   if (!lec) return next(new Error("Lecture not found", { cause: 404 }));
 
   // آخر عملية دفع لنفس الطالب والمحاضرة
@@ -309,9 +309,6 @@ export const getLectureForStudent = asyncHandler(async (req, res, next) => {
   };
   if (lastPayment?.status === "approved") {
     response.paymentStatus = "approved";
-    response.video = Array.isArray(lec.videos) && lec.videos.length
-      ? { url: lec.videos[0].url }
-      : null;
     return res.status(200).json(response);
   }
 

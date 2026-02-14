@@ -15,6 +15,7 @@ router.post(
   lectureController.addLecture
 );
 
+router.patch("/:lectureId", auth, upload.single("img"), lectureController.updateLecture);
 router.patch("/:lectureId/videos", auth, lectureController.addVideo);
 router.get("/getAllLecture", auth, lectureController.allLecture);
 router.get("/lectures/:branchId", auth, lectureController.lecturesByBranch);

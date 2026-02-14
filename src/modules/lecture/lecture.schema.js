@@ -7,5 +7,6 @@ export const addLecture = joi
     price: joi.number().required(),
     branch: joi.string().hex().length(24).required(),
     order: joi.number().required(),
+    year: joi.string().hex().length(24).required(),
   })
   .required();
