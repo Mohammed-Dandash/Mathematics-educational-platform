@@ -14,6 +14,13 @@ dotenv.config();
 console.log(process.env.MONGO_URI); // لازم يطبع URI الجديد
 
 const app = express();
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  credentials: true // ضيف دي لو بتبعت cookies أو tokens
+}));
+
+
 connectDB();
 const __dirname = path.resolve();
 
@@ -21,7 +28,6 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 const PORT = process.env.PORT;
 
 app.use(express.json({ limit: "10gb" }));
-app.use(cors({ origin: "*", credentials: true }));
 app.use(express.urlencoded({ limit: "10gb", extended: true }));
 //app.use("/uploads", express.static("uploads"));
 
