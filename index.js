@@ -11,7 +11,7 @@ import routerBranch from "./src/modules/branches/branchRoute.js";
 import cors from "cors";
 
 dotenv.config();
-console.log(process.env.MONGO_URI); // لازم يطبع URI الجديد
+//console.log(process.env.MONGO_URI); // لازم يطبع URI الجديد
 
 const app = express();
 app.use(cors({
@@ -52,3 +52,4 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
+
