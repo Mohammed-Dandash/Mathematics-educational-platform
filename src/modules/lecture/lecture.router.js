@@ -27,6 +27,7 @@ router.delete(
   lectureController.deleteVideo
 );
 
+router.patch("/lectures/:lectureId/lock", auth, lectureController.toggleLockLecture);
 router.delete("/lectures/:lectureId", auth, lectureController.deleteLecture);
 
 export default router;

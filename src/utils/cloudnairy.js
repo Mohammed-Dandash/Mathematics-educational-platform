@@ -93,6 +93,11 @@ const storage = multer.diskStorage({
       return cb(null, lecturesVideosPath);
     }
 
+    // 📄 PDF (للوجبات)
+    if (file.mimetype === "application/pdf" && url.includes("assignments")) {
+      return cb(null, assignmentsPicsPath);
+    }
+
     // 🖼️ صور
     if (file.mimetype.startsWith("image/")) {
       if (url.includes("assignments")) return cb(null, assignmentsPicsPath); // واجبات
@@ -119,6 +124,7 @@ const fileFilter = (req, file, cb) => {
     "image/png",
     "image/gif",
     "image/webp",
+    "application/pdf",
     "video/mp4",
     "video/mov",
     "video/avi",

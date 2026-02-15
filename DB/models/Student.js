@@ -3,7 +3,6 @@ import validator from "validator";
 import bcrypt from "bcrypt";         // ← مهم
 import jwt from "jsonwebtoken";        // لو بتستخدم generateAuthToken
 import nodemailer from "nodemailer";
-import crypto from "crypto";   // لو بتستخدم sendVerificationCodeEmail
 
 // import validator from './../../node_modules/validator/es/index';
 const studentSchema = new mongoose.Schema({
@@ -81,11 +80,17 @@ const studentSchema = new mongoose.Schema({
     },
 
 });
-studentSchema.pre("save", function (next) {
+// أولى -> A1, A2... | تانية -> B1, B2... | تالتة -> C1, C2...
+const GRADE_LETTER = { Frist: "A", Second: "B", Third: "C" };
+
+studentSchema.pre("save", async function (next) {
     if (this.studentCode) return next();
 
-    const randomCode = crypto.randomBytes(3).toString("hex").toUpperCase();
-    this.studentCode = `STD-${randomCode}`;
+    const letter = GRADE_LETTER[this.Grade];
+    if (!letter) return next();
+
+    const count = await this.constructor.countDocuments({ Grade: this.Grade });
+    this.studentCode = `${letter}${count + 1}`;
 
     next();
 });

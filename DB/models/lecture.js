@@ -15,6 +15,8 @@ const lectureSchema = new Schema(
 
     order: { type: Number, required: true },  // لترتيب المحاضرات
 
+    isLocked: { type: Boolean, default: false },  // إخفاء المحاضرة عن الطلاب
+
     videos: [
       {
         title: { type: String, required: true },

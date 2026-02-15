@@ -24,7 +24,7 @@ router.get("/lec/p", studentAuthMobile, Student.getPaidLecturesForStudent);
 router.post(
   "/assignments/:lectureId/submit",
   studentAuth,
-  upload.array("images", 30),
+  upload.array("files", 10),
   Student.submitAssignmentImages
 );
 router.post('/login/mobile',Student.loginMobile)
