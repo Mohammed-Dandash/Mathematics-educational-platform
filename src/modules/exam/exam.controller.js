@@ -61,7 +61,7 @@ export const examsByLecture = asyncHandler(async (req, res, next) => {
   const { lectureId } = req.params;
   const user = req.user;
 
-  const exams = await Exam.find({ lecture: lectureId }).select("-questions");
+  const exams = await Exam.find({ lecture: lectureId });
   if (!exams) {
     return next(new Error("الاختبارات غير موجودة", { cause: 404 }));
   }
