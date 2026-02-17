@@ -2,11 +2,13 @@ import { Schema, Types, model } from "mongoose";
 const assignmentSubmissionSchema = new Schema(
   {
     studentId: { type: Types.ObjectId, ref: "Student" },
-    files: [{ type: String, required: true }],
-    submittedAt: { type: Date, default: Date.now },
     lectureId: { type: Types.ObjectId, ref: "Lecture", required: true},
-    
-   images: [{ type: String, required: true }],
+    // ملف PDF واحد للواجب
+    file: { type: String, required: true },
+    submittedAt: { type: Date, default: Date.now },
+    // حقول قديمة للتوافق مع البيانات الموجودة (اختيارية)
+    files: [{ type: String }],
+    images: [{ type: String }],
   },
   { timestamps: true }
 );

@@ -9,6 +9,7 @@ import bcrypt from "bcrypt";
 import Students from "../../../DB/models/Student.js";
 import { ExamResult } from "../../../DB/models/examResult.js";
 import { StudentProgress } from "../../../DB/models/studentProgress.js";
+import { AssignmentSubmission } from "../../../DB/models/assismentResult.js";
 export const addAccount = asyncHandler(async (req, res, next) => {
   const user = req.user;
   if (user.role !== "admin") {
@@ -230,6 +231,7 @@ export const studentById = asyncHandler(async (req, res, next) => {
         select: "title",
       },
     });
+    
   const progress = await StudentProgress.find({ studentId: id })
     .select("lectureId homeworkDone examDone")
     .populate({
@@ -237,7 +239,19 @@ export const studentById = asyncHandler(async (req, res, next) => {
       select: "title",
     });
 
-  const studentData = { ...student.toObject(), examsResults, progress };
+  const assignmentSubmissions = await AssignmentSubmission.find({ studentId: id })
+    .select("lectureId file images files submittedAt createdAt updatedAt")
+    .populate({
+      path: "lectureId",
+      select: "title",
+    });
+
+  const studentData = { 
+    ...student.toObject(), 
+    examsResults, 
+    progress,
+    assignmentSubmissions 
+  };
   res.status(200).json(studentData);
 });
 

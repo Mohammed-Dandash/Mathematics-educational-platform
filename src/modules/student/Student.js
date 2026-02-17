@@ -16,7 +16,9 @@ router.get("/years", Student.listYears);
 router.get("/lectures/:branchId", Student.getLectureByBranceID);
 router.get("/lectures", studentAuth, Student.listLectureTitles);
 router.post("/grant-lecture-access", auth, Student.grantLectureAccessByCode);
+router.get("/check-lecture-access", auth, Student.checkStudentLectureAccess);
 router.get("/s/lectures/:id", studentAuth, Student.getLectureForStudent);
+router.get("/s/lectures/:lectureId/exam", studentAuth, Student.getExamByLecture);
 // router.get("/lectures", studentAuthM, Student.listLectureTitles);
 router.get("/lec/p", studentAuthMobile, Student.getPaidLecturesForStudent);
 

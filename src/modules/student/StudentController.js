@@ -8,6 +8,8 @@ import { Payment } from "../../../DB/models/payment.js";
 import { AssignmentSubmission } from "../../../DB/models/assismentResult.js";
 import { Branch } from "../../../DB/models/branch.js";
 import { Assignment } from "../../../DB/models/assisment.js";
+import { Exam } from "../../../DB/models/exam.js";
+import { ExamResult } from "../../../DB/models/examResult.js";
 import jwt from "jsonwebtoken"
 import mongoose from "mongoose";
 import { LectureAccess } from "../../../DB/models/LectureAccess.js";
@@ -318,6 +320,14 @@ export const getLectureForStudent = asyncHandler(async (req, res, next) => {
     lectureId: lid
   }).lean();
 
+  // 🔎 التحقق من وجود واجب مسلَّم لهذه المحاضرة من هذا الطالب
+  const assignmentSubmission = await AssignmentSubmission.findOne({
+    studentId: sid,
+    lectureId: lid,
+  })
+    .sort({ createdAt: -1 })
+    .lean();
+
   // تحديد إذا كان الطالب لديه access
   const hasAccess = 
     lastPayment?.status === "approved" || 
@@ -330,7 +340,18 @@ export const getLectureForStudent = asyncHandler(async (req, res, next) => {
     order: lec.order,
     img: lec.img,
     description: lec.description,
-    hasAccess: hasAccess
+    hasAccess: hasAccess,
+    // معلومات الواجب (لو موجود)
+    assignment: assignmentSubmission
+      ? {
+          hasSubmitted: true,
+          file: assignmentSubmission.file || null,
+          submittedAt: assignmentSubmission.submittedAt || assignmentSubmission.createdAt,
+          assignmentId: assignmentSubmission._id,
+        }
+      : {
+          hasSubmitted: false,
+        },
   };
 
   if (hasAccess) {
@@ -367,21 +388,20 @@ export const submitAssignmentImages = asyncHandler(async (req, res, next) => {
   const lecture = await Lecture.findById(lectureId, { title: 1 }).lean();
   if (!lecture) return next(new Error("Lecture not found", { cause: 404 }));
 
+  // حالياً الواجب يتم رفعه كملف PDF واحد فقط
   if (!req.files || req.files.length === 0) {
-    return next(new Error("يرجى رفع ملف واحد على الأقل (صور أو PDF)", { cause: 400 }));
+    return next(new Error("يرجى رفع ملف PDF واحد على الأقل", { cause: 400 }));
   }
 
-  // نخلي الباث من أول "uploads" (يدعم صور و PDF)
-  const files = req.files.map((f) => {
-    const idx = f.path.indexOf("uploads");
-    return idx !== -1 ? f.path.slice(idx) : f.path;
-  });
+  // نتعامل مع أول ملف فقط (ملف PDF واحد)
+  const uploadedFile = req.files[0];
+  const idx = uploadedFile.path.indexOf("uploads");
+  const filePath = idx !== -1 ? uploadedFile.path.slice(idx) : uploadedFile.path;
 
   const sub = await AssignmentSubmission.create({
     studentId,
     lectureId,
-    images: files,
-    status: "submitted",
+    file: filePath, // ملف PDF واحد
   });
 
   const student = await Student.findById(studentId, { name: 1 }).lean();
@@ -391,10 +411,8 @@ export const submitAssignmentImages = asyncHandler(async (req, res, next) => {
     studentName: student?.name || null,
     lectureId,
     lectureTitle: lecture.title,
-    filesCount: files.length,
-    status: sub.status,
+    file: sub.file,
     createdAt: sub.createdAt,
-    files: sub.images,
   });
 });
 
@@ -455,22 +473,179 @@ export const grantLectureAccessByCode = asyncHandler(async (req, res, next) => {
     return next(new Error("Student not found", { cause: 404 }));
   }
 
-  await LectureAccess.findOneAndUpdate(
-    {
+  // التحقق من وجود الوصول الحالي
+  const existingAccess = await LectureAccess.findOne({
+    studentId: student._id,
+    lectureId,
+  });
+
+  if (existingAccess) {
+    // إذا كان الوصول موجود، احذفه (أغلق المحاضرة)
+    await LectureAccess.deleteOne({
       studentId: student._id,
       lectureId,
-    },
-    {
+    });
+
+    return res.status(200).json({
+      message: "Lecture access revoked successfully",
+      action: "closed",
+    });
+  } else {
+    // إذا لم يكن موجود، أنشئه (افتح المحاضرة)
+    await LectureAccess.create({
       studentId: student._id,
       lectureId,
       grantedBy: "admin",
       grantedByUser: req.user._id,
-    },
-    { upsert: true, new: true }
-  );
+    });
+
+    return res.status(200).json({
+      message: "Lecture access granted successfully",
+      action: "opened",
+    });
+  }
+});
+
+export const checkStudentLectureAccess = asyncHandler(async (req, res, next) => {
+  const { studentCode, lectureId } = req.query;
+
+  if (!studentCode || !lectureId) {
+    return next(new Error("studentCode and lectureId are required", { cause: 400 }));
+  }
+
+  // التحقق من صحة lectureId
+  if (!mongoose.Types.ObjectId.isValid(lectureId)) {
+    return next(new Error("Invalid lectureId", { cause: 400 }));
+  }
+
+  // البحث عن الطالب
+  const student = await Student.findOne({ studentCode });
+  if (!student) {
+    return next(new Error("Student not found", { cause: 404 }));
+  }
+
+  // التحقق من وجود المحاضرة
+  const lecture = await Lecture.findById(lectureId);
+  if (!lecture) {
+    return next(new Error("Lecture not found", { cause: 404 }));
+  }
+
+  const sid = new mongoose.Types.ObjectId(String(student._id));
+  const lid = new mongoose.Types.ObjectId(String(lectureId));
+
+  // التحقق من وجود Payment مع status approved
+  const approvedPayment = await Payment.findOne({
+    studentId: sid,
+    lectureId: lid,
+    status: "approved",
+  }).lean();
+
+  // التحقق من وجود LectureAccess (منح يدوي)
+  const lectureAccess = await LectureAccess.findOne({
+    studentId: sid,
+    lectureId: lid,
+  }).lean();
+
+  // تحديد إذا كان الطالب لديه access
+  const hasAccess = !!approvedPayment || !!lectureAccess;
+
+  // تحديد نوع الوصول
+  let accessType = null;
+  if (approvedPayment) {
+    accessType = "payment";
+  } else if (lectureAccess) {
+    accessType = "manual";
+  }
 
   return res.status(200).json({
-    message: "Lecture access granted successfully",
+    studentCode,
+    lectureId,
+    hasAccess,
+    accessType,
+    studentName: student.name,
+    lectureTitle: lecture.title,
+  });
+});
+
+export const getExamByLecture = asyncHandler(async (req, res, next) => {
+  // لازم الراوت ده يكون وراه studentAuth
+  const rawStudentId = req.student?._id || req.student?.id;
+  const { lectureId } = req.params;
+
+  if (!rawStudentId) {
+    return next(new Error("Unauthorized (student missing)", { cause: 401 }));
+  }
+  if (!lectureId) {
+    return next(new Error("lecture id is required", { cause: 400 }));
+  }
+
+  // حوّل لـ ObjectId علشان الماتش يبقى دقيق
+  const sid = new mongoose.Types.ObjectId(String(rawStudentId));
+  const lid = new mongoose.Types.ObjectId(String(lectureId));
+
+  // التحقق من وجود المحاضرة
+  const lecture = await Lecture.findById(lid).lean();
+  if (!lecture) {
+    return next(new Error("Lecture not found", { cause: 404 }));
+  }
+
+  // البحث عن الامتحان الخاص بالمحاضرة
+  const exam = await Exam.findOne({ lecture: lid }).lean();
+  if (!exam) {
+    return res.status(404).json({
+      message: "لا يوجد امتحان لهذه المحاضرة",
+      hasExam: false,
+    });
+  }
+
+  // البحث عن نتيجة الامتحان للطالب
+  const examResult = await ExamResult.findOne({
+    studentId: sid,
+    examId: exam._id,
+  })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  // لو الطالب امتحن قبل كده، نرجع النتيجة فقط
+  if (examResult) {
+    return res.status(200).json({
+      hasExam: true,
+      hasResult: true,
+      examId: exam._id,
+      result: {
+        score: examResult.score,
+        totalQuestions: examResult.totalQuestions,
+        percentage: examResult.totalQuestions > 0 
+          ? ((examResult.score / examResult.totalQuestions) * 100).toFixed(2)
+          : 0,
+        answers: examResult.answers,
+        submittedAt: examResult.createdAt,
+      },
+    });
+  }
+
+  // لو لم يُمتحن، نرجع الامتحان بدون الإجابات الصحيحة
+  const examQuestions = exam.questions.map((q) => {
+    // نخلط الإجابات (الصحيحة + الخاطئة) عشوائياً
+    const allAnswers = [q.correctAnswer, ...q.wrongAnswers];
+    const shuffledAnswers = allAnswers.sort(() => Math.random() - 0.5);
+
+    return {
+      question: q.question,
+      img: q.img || null,
+      answers: shuffledAnswers,
+      // لا نرسل correctAnswer للطالب
+    };
+  });
+
+  return res.status(200).json({
+    hasExam: true,
+    hasResult: false,
+    examId: exam._id,
+    lectureId: lid,
+    lectureTitle: lecture.title,
+    questions: examQuestions,
+    totalQuestions: examQuestions.length,
   });
 });
 
