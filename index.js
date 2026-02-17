@@ -16,7 +16,7 @@ dotenv.config();
 const app = express();
 app.use(cors({
   origin: "*",
-  methods: ["GET", "POST", "PUT","PATCH", "DELETE", "OPTIONS"],
+  methods: ["GET", "PATCH","POST", "PUT", "DELETE", "OPTIONS"],
   credentials: true // ضيف دي لو بتبعت cookies أو tokens
 }));
 

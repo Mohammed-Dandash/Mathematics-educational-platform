@@ -263,6 +263,34 @@ export const deleteVideo = asyncHandler(async (req, res, next) => {
 });
 
 
+export const toggleLockLecture = asyncHandler(async (req, res, next) => {
+  const user = req.user;
+
+  if (user.role !== "admin") {
+    return next(new Error("انت لا تملك الصلاحية المطلوبة", { cause: 403 }));
+  }
+
+  const { lectureId } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(lectureId)) {
+    return next(new Error("Lecture ID غير صالح", { cause: 400 }));
+  }
+
+  const lecture = await Lecture.findById(lectureId);
+  if (!lecture) {
+    return next(new Error("المحاضرة غير موجودة", { cause: 404 }));
+  }
+
+  lecture.isLocked = !lecture.isLocked;
+  await lecture.save();
+
+  res.status(200).json({
+    success: true,
+    message: lecture.isLocked ? "تم إقفال المحاضرة عن الطلاب" : "تم فتح المحاضرة للطلاب",
+    isLocked: lecture.isLocked,
+  });
+});
+
 export const deleteLecture = asyncHandler(async (req, res, next) => {
   const user = req.user;
 

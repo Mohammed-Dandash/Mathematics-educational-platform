@@ -93,7 +93,12 @@ export const login = asyncHandler(async (req, res, next) => {
     ip: req.ip || req.socket?.remoteAddress || null,
   });
 
-  return res.status(200).json({ message: "Login successful", student, token });
+  return res.status(200).json({
+    message: "Login successful",
+    student,
+    studentCode: student.studentCode,
+    token,
+  });
 });
 
 // ------------------ RESET CODE (زي ما هو) ------------------
@@ -233,8 +238,8 @@ export const getLectureByBranceID = asyncHandler(async (req, res, next) => {
     return next(new Error("Branch not found", { cause: 404 }));
   }
   
-  // بناء query الشرط
-  const query = { branch: branchId };
+  // بناء query الشرط (استثناء المحاضرات المقفلة)
+  const query = { branch: branchId, isLocked: { $ne: true } };
   
   // إذا كان هناك بحث، أضف شرط البحث
   if (search && search.trim()) {
@@ -268,7 +273,7 @@ export const listLectureTitles = asyncHandler(async (req, res, next) => {
     return next(new Error("Branch not found", { cause: 404 }));
   }
 
-  const lectures = await Lecture.find({ branch: branchId })
+  const lectures = await Lecture.find({ branch: branchId, isLocked: { $ne: true } })
     .sort({ createdAt: 1 })
     .lean();
 
@@ -292,6 +297,14 @@ export const getLectureForStudent = asyncHandler(async (req, res, next) => {
   // هات بيانات المحاضرة
   const lec = await Lecture.findById(lid).select("-videos").lean();
   if (!lec) return next(new Error("Lecture not found", { cause: 404 }));
+
+  // المحاضرة مقفولة - الطالب لا يستطيع رؤيتها
+  if (lec.isLocked) {
+    return res.status(403).json({
+      message: "هذه المحاضرة غير متاحة حالياً",
+      isLocked: true,
+    });
+  }
 
   // آخر عملية دفع لنفس الطالب والمحاضرة
   const lastPayment = await Payment
@@ -355,11 +368,11 @@ export const submitAssignmentImages = asyncHandler(async (req, res, next) => {
   if (!lecture) return next(new Error("Lecture not found", { cause: 404 }));
 
   if (!req.files || req.files.length === 0) {
-    return next(new Error("At least one image is required", { cause: 400 }));
+    return next(new Error("يرجى رفع ملف واحد على الأقل (صور أو PDF)", { cause: 400 }));
   }
 
-  // نخلي الباث من أول "uploads"
-  const images = req.files.map((f) => {
+  // نخلي الباث من أول "uploads" (يدعم صور و PDF)
+  const files = req.files.map((f) => {
     const idx = f.path.indexOf("uploads");
     return idx !== -1 ? f.path.slice(idx) : f.path;
   });
@@ -367,7 +380,7 @@ export const submitAssignmentImages = asyncHandler(async (req, res, next) => {
   const sub = await AssignmentSubmission.create({
     studentId,
     lectureId,
-    images,
+    images: files,
     status: "submitted",
   });
 
@@ -378,10 +391,10 @@ export const submitAssignmentImages = asyncHandler(async (req, res, next) => {
     studentName: student?.name || null,
     lectureId,
     lectureTitle: lecture.title,
-    imagesCount: images.length,
+    filesCount: files.length,
     status: sub.status,
     createdAt: sub.createdAt,
-    images: sub.images, // رجّع المسارات بعد التعديل
+    files: sub.images,
   });
 });
 
@@ -494,9 +507,10 @@ export const getPaidLecturesForStudent = asyncHandler(async (req, res, next) => 
     return res.status(200).json([]);
   }
 
-  // 4️⃣ جلب بيانات المحاضرات
+  // 4️⃣ جلب بيانات المحاضرات (استثناء المقفولة)
   const lectures = await Lecture.find({
     _id: { $in: lectureIds },
+    isLocked: { $ne: true },
   })
     .select("title price order img description videos")
     .lean();
