@@ -61,7 +61,7 @@ export const examsByLecture = asyncHandler(async (req, res, next) => {
   const { lectureId } = req.params;
   const user = req.user;
 
-  const exams = await Exam.find({ lecture: lectureId });
+  const exams = await Exam.find({ lecture: lectureId }).select("-questions");
   if (!exams) {
     return next(new Error("الاختبارات غير موجودة", { cause: 404 }));
   }
@@ -87,7 +87,7 @@ export const submitExam = asyncHandler(async (req, res, next) => {
   // تصحيح الإجابات
   for (const submitted of answers) {
     const original = exam.questions.find(
-      (q) => q.question === submitted.question
+      (q) => q.question === submitted.question,
     );
 
     if (!original) {
@@ -113,9 +113,7 @@ export const submitExam = asyncHandler(async (req, res, next) => {
 
   // الأسئلة اللي متجاوبتش
   for (const original of exam.questions) {
-    const answered = answers.find(
-      (a) => a.question === original.question
-    );
+    const answered = answers.find((a) => a.question === original.question);
     if (!answered) {
       detailedAnswers.push({
         question: original.question,
@@ -146,7 +144,7 @@ export const submitExam = asyncHandler(async (req, res, next) => {
     await StudentProgress.findOneAndUpdate(
       { studentId, lectureId: exam.lecture._id },
       { examDone: true },
-      { upsert: true, new: true }
+      { upsert: true, new: true },
     );
   }
 
