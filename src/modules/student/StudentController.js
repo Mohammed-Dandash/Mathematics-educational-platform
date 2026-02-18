@@ -752,7 +752,7 @@ export const getPaidLecturesForStudent = asyncHandler(
       _id: { $in: lectureIds },
       isLocked: { $ne: true },
     })
-      .select("title price order img description")
+      .select("title price order img description videos")
       .lean();
 
     const data = lectures.map((lec) => ({
