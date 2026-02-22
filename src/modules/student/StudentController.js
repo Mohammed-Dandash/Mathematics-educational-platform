@@ -765,6 +765,5 @@ export const getPaidLecturesForStudent = asyncHandler(async (req, res, next) => 
       : [],
   }));
 
-    return res.status(200).json(data);
-  },
-);
+  return res.status(200).json(data);
+});
