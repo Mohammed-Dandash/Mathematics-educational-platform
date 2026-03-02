@@ -714,60 +714,56 @@ export const getExamByLecture = asyncHandler(async (req, res, next) => {
   });
 });
 
-export const getPaidLecturesForStudent = asyncHandler(
-  async (req, res, next) => {
-    const rawStudentId = req.studentMobile?._id || req.studentMobile?.id;
+export const getPaidLecturesForStudent = asyncHandler(async (req, res, next) => {
+  const rawStudentId = req.studentMobile?._id || req.studentMobile?.id;
+  if (!rawStudentId) {
+    return next(new Error("Unauthorized", { cause: 401 }));
+  }
 
-    if (!rawStudentId) {
-      return next(new Error("Unauthorized", { cause: 401 }));
-    }
+  const sid = new mongoose.Types.ObjectId(String(rawStudentId));
 
-    const sid = new mongoose.Types.ObjectId(String(rawStudentId));
+  // 1️⃣ المحاضرات المدفوعة
+  const paidLectureIds = await Payment.find({
+    studentId: sid,
+    status: "approved",
+  }).distinct("lectureId");
 
-    // 1️⃣ المحاضرات المدفوعة
-    const paidLectureIds = await Payment.find({
-      studentId: sid,
-      status: "approved",
-    }).distinct("lectureId");
+  // 2️⃣ المحاضرات المضافة يدويًا
+  const manualLectureIds = await LectureAccess.find({
+    studentId: sid,
+  }).distinct("lectureId");
 
-    // 2️⃣ المحاضرات المضافة يدويًا
-    const manualLectureIds = await LectureAccess.find({
-      studentId: sid,
-    }).distinct("lectureId");
+  // 3️⃣ دمج الاتنين بدون تكرار
+  const lectureIds = [
+    ...new Set([
+      ...paidLectureIds.map((id) => id.toString()),
+      ...manualLectureIds.map((id) => id.toString()),
+    ]),
+  ];
 
-    // 3️⃣ دمج الاتنين بدون تكرار
-    const lectureIds = [
-      ...new Set([
-        ...paidLectureIds.map((id) => id.toString()),
-        ...manualLectureIds.map((id) => id.toString()),
-      ]),
-    ];
+  if (!lectureIds.length) {
+    return res.status(200).json([]);
+  }
 
-    if (!lectureIds.length) {
-      return res.status(200).json([]);
-    }
+  // 4️⃣ جلب بيانات المحاضرات (استثناء المقفولة)
+  const lectures = await Lecture.find({
+    _id: { $in: lectureIds },
+    isLocked: { $ne: true },
+  })
+    .select("title price order img description videos")
+    .lean();
 
-    // 4️⃣ جلب بيانات المحاضرات (استثناء المقفولة)
-    const lectures = await Lecture.find({
-      _id: { $in: lectureIds },
-      isLocked: { $ne: true },
-    })
-      .select("title price order img description videos")
-      .lean();
+  const data = lectures.map((lec) => ({
+    id: lec._id,
+    title: lec.title,
+    price: lec.price,
+    order: lec.order,
+    img: lec.img,
+    description: lec.description,
+    videos: Array.isArray(lec.videos)
+      ? lec.videos.map((v) => ({ title: v.title, url: v.url }))
+      : [],
+  }));
 
-    const data = lectures.map((lec) => ({
-      id: lec._id,
-      title: lec.title,
-      price: lec.price,
-      order: lec.order,
-      img: lec.img,
-      description: lec.description,
-      video:
-        Array.isArray(lec.videos) && lec.videos.length
-          ? { url: lec.videos[0].url }
-          : null,
-    }));
-
-    return res.status(200).json(data);
-  },
-);
+  return res.status(200).json(data);
+});
