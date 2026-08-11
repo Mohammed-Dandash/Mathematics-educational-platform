@@ -14,13 +14,17 @@ const lectureAccessSchema = new mongoose.Schema(
     },
     grantedBy: {
       type: String,
-      enum: ["payment", "admin"],
+      enum: ["payment", "admin","code"],
       default: "admin",
     },
     grantedByUser: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User", // الأدمن / الأسيستنت اللي أضاف
     },
+    codeUsed: {
+      type: String,
+      default: null
+    }
   },
   { timestamps: true }
 );
