@@ -8,6 +8,8 @@ import examRouter from "./src/modules/exam/exam.router.js";
 import routerPayment from "./src/modules/payments/payment.route.js";
 import router from "./src/modules/student/Student.js";
 import routerBranch from "./src/modules/branches/branchRoute.js";
+import routerCenter from "./src/modules/Center/center.Route.js";
+import routerActivationCode from "./src/modules/activationCode/activationCode.Route.js";
 import cors from "cors";
 
 dotenv.config();
@@ -37,6 +39,8 @@ app.use("/exam", examRouter);
 app.use("/payment", routerPayment);
 app.use("/student", router);
 app.use("/branch", routerBranch);
+app.use("/center", routerCenter);
+app.use("/activation-code", routerActivationCode);
 app.get("/", (req, res) => res.send("Hello in Our Platform"));
 app.use((err, req, res, next) => {
   const status =

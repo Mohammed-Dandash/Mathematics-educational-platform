@@ -5,13 +5,12 @@ import jwt from "jsonwebtoken";
 
 export const auth = asyncHandler(async (req, res, next) => {
   let { token } = req.headers;
-
   if (!token) {
     return next(new Error("التوكن غير صالح", { cause: 401 }));
   }
 
   if (!token.startsWith(process.env.BEARER_TOKEN)) {
-    return next(new Error("التوكن غير صالح", { cause: 401 }));
+    return next(new Error(" التوكن غير صالح", { cause: 401 }));
   }
 
   token = token.split(" ")[1];

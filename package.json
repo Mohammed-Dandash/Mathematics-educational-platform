@@ -1,15 +1,23 @@
 {
   "name": "dashboard",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "",
+  "keywords": [],
+  "homepage": "https://github.com/Mohammed-Dandash/Mathematics-educational-platform#readme",
+  "bugs": {
+    "url": "https://github.com/Mohammed-Dandash/Mathematics-educational-platform/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mohammed-Dandash/Mathematics-educational-platform.git"
+  },
+  "license": "ISC",
+  "author": "",
   "type": "module",
+  "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "dependencies": {
     "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.2",
