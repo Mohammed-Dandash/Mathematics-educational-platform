@@ -617,7 +617,7 @@ export const checkStudentLectureAccess = asyncHandler(
     if (approvedPayment) {
       accessType = "payment";
     } else if (lectureAccess) {
-      accessType = "manual";
+      accessType = lectureAccess.grantedBy === "code" ? "code" : "manual";
     }
 
     return res.status(200).json({

@@ -1,6 +1,7 @@
 import { ActivationCode } from "../../../DB/models/ActivationCode.js";
 import { Center } from "../../../DB/models/center.js";
 import { Lecture } from "../../../DB/models/lecture.js";
+import { LectureAccess } from "../../../DB/models/LectureAccess.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import mongoose from "mongoose";
 import crypto from "crypto";
@@ -24,8 +25,14 @@ export const generateCodes = asyncHandler(async (req, res, next) => {
     return next(new Error("أنت لا تملك الصلاحية المطلوبة", { cause: 403 }));
   }
 
-  if (!centerId || !lectureId || !count || count <= 0) {
+  const codesCount = Number(count);
+
+  if (!centerId || !lectureId || !codesCount || codesCount <= 0) {
     return next(new Error("centerId, lectureId, و count (أكبر من 0) مطلوبين", { cause: 400 }));
+  }
+
+  if (codesCount > 200) {
+    return next(new Error("الحد الأقصى لتوليد الأكواد هو 200 كود في المرة", { cause: 400 }));
   }
 
   if (!mongoose.Types.ObjectId.isValid(centerId) || !mongoose.Types.ObjectId.isValid(lectureId)) {
@@ -44,7 +51,7 @@ export const generateCodes = asyncHandler(async (req, res, next) => {
   
   const generatedSet = new Set(); 
 
-  while (codesToInsert.length < count) {
+  while (codesToInsert.length < codesCount) {
     const newCode = generateReadableCode(8); 
     
     if (!generatedSet.has(newCode)) {
@@ -69,7 +76,7 @@ export const generateCodes = asyncHandler(async (req, res, next) => {
   }
 
   res.status(201).json({
-    message: `تم توليد عدد ${count} كود بنجاح`,
+    message: `تم توليد عدد ${codesCount} كود بنجاح`,
     data: codesToInsert.map(c => c.code) 
   });
 });
@@ -145,5 +152,106 @@ export const deleteUnusedCodes = asyncHandler(async (req, res, next) => {
 
   res.status(200).json({
     message: `تم حذف ${result.deletedCount} كود غير مستخدم بنجاح`,
+  });
+});
+
+// ================= Redeem Code (Student) =================
+export const redeemCode = asyncHandler(async (req, res, next) => {
+  const studentId = req.student?._id || req.student?.id;
+  const { code, lectureId } = req.body;
+
+  if (!studentId) {
+    return next(new Error("Students only (unauthorized)", { cause: 401 }));
+  }
+
+  if (!code || !lectureId) {
+    return next(new Error("الكود ومعرّف المحاضرة مطلوبان", { cause: 400 }));
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(lectureId)) {
+    return next(new Error("lectureId غير صالح", { cause: 400 }));
+  }
+
+  const lecture = await Lecture.findById(lectureId, { title: 1, isLocked: 1 }).lean();
+  if (!lecture) {
+    return next(new Error("المحاضرة غير موجودة", { cause: 404 }));
+  }
+  if (lecture.isLocked) {
+    return next(new Error("هذه المحاضرة غير متاحة حالياً", { cause: 403 }));
+  }
+
+  const existingAccess = await LectureAccess.findOne({
+    studentId,
+    lectureId,
+  }).lean();
+
+  if (existingAccess) {
+    return res.status(200).json({
+      message: "لديك صلاحية الدخول لهذه المحاضرة بالفعل",
+      hasAccess: true,
+    });
+  }
+
+  const normalizedCode = String(code).trim().toUpperCase();
+  const codeDoc = await ActivationCode.findOne({ code: normalizedCode });
+
+  if (!codeDoc) {
+    return next(new Error("الكود غير صحيح", { cause: 400 }));
+  }
+
+  if (String(codeDoc.lectureId) !== String(lectureId)) {
+    return next(new Error("هذا الكود غير مخصص لهذه المحاضرة", { cause: 400 }));
+  }
+
+  if (codeDoc.isUsed) {
+    return next(new Error("هذا الكود مستخدم من قبل", { cause: 400 }));
+  }
+
+  const center = await Center.findById(codeDoc.centerId, { isActive: 1, name: 1 }).lean();
+  if (!center) {
+    return next(new Error("السنتر المرتبط بهذا الكود غير موجود", { cause: 400 }));
+  }
+  if (center.isActive === false) {
+    return next(new Error("هذا السنتر متوقف حالياً، تواصل مع الإدارة", { cause: 400 }));
+  }
+
+  const usedCode = await ActivationCode.findOneAndUpdate(
+    { _id: codeDoc._id, isUsed: false },
+    {
+      $set: {
+        isUsed: true,
+        usedBy: studentId,
+        usedAt: new Date(),
+      },
+    },
+    { new: true }
+  );
+
+  if (!usedCode) {
+    return next(new Error("هذا الكود مستخدم من قبل", { cause: 400 }));
+  }
+
+  try {
+    await LectureAccess.create({
+      studentId,
+      lectureId,
+      grantedBy: "code",
+      codeUsed: usedCode.code,
+    });
+  } catch (error) {
+    if (error.code !== 11000) {
+      await ActivationCode.updateOne(
+        { _id: usedCode._id },
+        { $set: { isUsed: false, usedBy: null, usedAt: null } }
+      );
+      throw error;
+    }
+  }
+
+  res.status(200).json({
+    message: "تم تفعيل المحاضرة بنجاح",
+    hasAccess: true,
+    lectureTitle: lecture.title,
+    centerName: center.name,
   });
 });
