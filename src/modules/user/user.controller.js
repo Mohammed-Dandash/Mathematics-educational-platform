@@ -10,6 +10,49 @@ import Students from "../../../DB/models/Student.js";
 import { ExamResult } from "../../../DB/models/examResult.js";
 import { StudentProgress } from "../../../DB/models/studentProgress.js";
 import { AssignmentSubmission } from "../../../DB/models/assismentResult.js";
+import { Lecture } from "../../../DB/models/lecture.js";
+import { Payment } from "../../../DB/models/payment.js";
+import { LectureAccess } from "../../../DB/models/LectureAccess.js";
+import { ActivationCode } from "../../../DB/models/ActivationCode.js";
+import { Center } from "../../../DB/models/center.js";
+
+const CAIRO_TZ = "Africa/Cairo";
+
+const cairoDateKey = (date) =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: CAIRO_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+
+const fillDailySeries = (rows, days = 30) => {
+  const map = new Map((rows || []).map((r) => [r._id, r]));
+  const series = [];
+  const today = new Date();
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const key = cairoDateKey(d);
+    const row = map.get(key);
+    series.push({
+      date: key,
+      count: row?.count || 0,
+      approved: row?.approved || 0,
+      pending: row?.pending || 0,
+      rejected: row?.rejected || 0,
+    });
+  }
+  return series;
+};
+
+const countByKey = (rows, keys, fallback = 0) => {
+  const map = Object.fromEntries((rows || []).map((r) => [r._id, r.count]));
+  return keys.reduce((acc, key) => {
+    acc[key] = map[key] ?? fallback;
+    return acc;
+  }, {});
+};
 export const addAccount = asyncHandler(async (req, res, next) => {
   const user = req.user;
   if (user.role !== "admin") {
@@ -253,6 +296,242 @@ export const studentById = asyncHandler(async (req, res, next) => {
     assignmentSubmissions 
   };
   res.status(200).json(studentData);
+});
+
+export const dashboard = asyncHandler(async (req, res, next) => {
+  if (req.user.role !== "admin" && req.user.role !== "assistant") {
+    return next(new Error("انت لا تملك الصلاحية المطلوبة", { cause: 403 }));
+  }
+
+  const last30 = new Date();
+  last30.setDate(last30.getDate() - 30);
+  last30.setHours(0, 0, 0, 0);
+
+  const last7 = new Date();
+  last7.setDate(last7.getDate() - 7);
+  last7.setHours(0, 0, 0, 0);
+
+  const [
+    studentsByGrade,
+    studentsLast30,
+    lecturesCount,
+    lecturesByYear,
+    paymentsByStatus,
+    paymentsLast30,
+    revenueAgg,
+    accessByMethod,
+    accessLast7,
+    codesAgg,
+    centersCount,
+    examResultsAgg,
+    assignmentsCount,
+    topLecturesByAccess,
+    pendingPayments,
+  ] = await Promise.all([
+    Students.aggregate([{ $group: { _id: "$Grade", count: { $sum: 1 } } }]),
+    Students.aggregate([
+      { $addFields: { createdAt: { $toDate: "$_id" } } },
+      { $match: { createdAt: { $gte: last30 } } },
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              format: "%Y-%m-%d",
+              date: "$createdAt",
+              timezone: CAIRO_TZ,
+            },
+          },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]),
+    Lecture.countDocuments(),
+    Lecture.aggregate([
+      {
+        $lookup: {
+          from: "years",
+          localField: "year",
+          foreignField: "_id",
+          as: "yearDoc",
+        },
+      },
+      { $unwind: { path: "$yearDoc", preserveNullAndEmptyArrays: true } },
+      { $group: { _id: "$yearDoc.name", count: { $sum: 1 } } },
+    ]),
+    Payment.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
+    Payment.aggregate([
+      { $match: { createdAt: { $gte: last30 } } },
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              format: "%Y-%m-%d",
+              date: "$createdAt",
+              timezone: CAIRO_TZ,
+            },
+          },
+          count: { $sum: 1 },
+          approved: {
+            $sum: { $cond: [{ $eq: ["$status", "approved"] }, 1, 0] },
+          },
+          pending: {
+            $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] },
+          },
+          rejected: {
+            $sum: { $cond: [{ $eq: ["$status", "rejected"] }, 1, 0] },
+          },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]),
+    Payment.aggregate([
+      { $match: { status: "approved" } },
+      {
+        $lookup: {
+          from: Lecture.collection.name,
+          localField: "lectureId",
+          foreignField: "_id",
+          as: "lecture",
+        },
+      },
+      { $unwind: { path: "$lecture", preserveNullAndEmptyArrays: true } },
+      {
+        $group: {
+          _id: null,
+          revenue: { $sum: { $ifNull: ["$lecture.price", 0] } },
+          count: { $sum: 1 },
+        },
+      },
+    ]),
+    LectureAccess.aggregate([
+      { $group: { _id: "$grantedBy", count: { $sum: 1 } } },
+    ]),
+    LectureAccess.countDocuments({ createdAt: { $gte: last7 } }),
+    ActivationCode.aggregate([
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          used: { $sum: { $cond: ["$isUsed", 1, 0] } },
+          unused: { $sum: { $cond: ["$isUsed", 0, 1] } },
+        },
+      },
+    ]),
+    Center.countDocuments(),
+    ExamResult.aggregate([
+      {
+        $group: {
+          _id: null,
+          count: { $sum: 1 },
+          avgScore: { $avg: "$score" },
+          avgTotal: { $avg: "$totalQuestions" },
+        },
+      },
+    ]),
+    AssignmentSubmission.countDocuments(),
+    LectureAccess.aggregate([
+      { $group: { _id: "$lectureId", count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 6 },
+      {
+        $lookup: {
+          from: Lecture.collection.name,
+          localField: "_id",
+          foreignField: "_id",
+          as: "lecture",
+        },
+      },
+      { $unwind: { path: "$lecture", preserveNullAndEmptyArrays: true } },
+      { $project: { title: { $ifNull: ["$lecture.title", "محاضرة محذوفة"] }, count: 1 } },
+    ]),
+    Payment.find({ status: "pending" })
+      .sort({ createdAt: -1 })
+      .limit(6)
+      .populate("studentId", "name studentCode Grade")
+      .populate("lectureId", "title price")
+      .lean(),
+  ]);
+
+  const gradeCounts = countByKey(studentsByGrade, ["Frist", "Second", "Third"]);
+  const paymentCounts = countByKey(paymentsByStatus, [
+    "pending",
+    "approved",
+    "rejected",
+  ]);
+  const accessCounts = countByKey(accessByMethod, ["payment", "admin", "code"]);
+  const codes = codesAgg[0] || { total: 0, used: 0, unused: 0 };
+  const exam = examResultsAgg[0] || { count: 0, avgScore: 0, avgTotal: 0 };
+  const totalStudents =
+    gradeCounts.Frist + gradeCounts.Second + gradeCounts.Third;
+  const totalPayments =
+    paymentCounts.pending + paymentCounts.approved + paymentCounts.rejected;
+  const totalAccess =
+    accessCounts.payment + accessCounts.admin + accessCounts.code;
+
+  res.status(200).json({
+    kpis: {
+      totalStudents,
+      studentsLast30: studentsLast30.reduce((sum, r) => sum + r.count, 0),
+      lectures: lecturesCount,
+      pendingPayments: paymentCounts.pending,
+      approvedPayments: paymentCounts.approved,
+      revenue: revenueAgg[0]?.revenue || 0,
+      totalAccess,
+      accessLast7,
+      centers: centersCount,
+      assignments: assignmentsCount,
+      exams: exam.count,
+      avgExamPercent:
+        exam.avgTotal > 0
+          ? Math.round((exam.avgScore / exam.avgTotal) * 100)
+          : 0,
+      codesTotal: codes.total,
+      codesUsed: codes.used,
+      codesUnused: codes.unused,
+    },
+    studentsByGrade: [
+      { key: "Frist", name: "الصف الأول", value: gradeCounts.Frist },
+      { key: "Second", name: "الصف الثاني", value: gradeCounts.Second },
+      { key: "Third", name: "الصف الثالث", value: gradeCounts.Third },
+    ],
+    paymentsByStatus: [
+      { key: "pending", name: "قيد الانتظار", value: paymentCounts.pending },
+      { key: "approved", name: "مقبول", value: paymentCounts.approved },
+      { key: "rejected", name: "مرفوض", value: paymentCounts.rejected },
+    ],
+    accessByMethod: [
+      { key: "payment", name: "دفع إلكتروني", value: accessCounts.payment },
+      { key: "code", name: "كود تفعيل", value: accessCounts.code },
+      { key: "admin", name: "منح يدوي", value: accessCounts.admin },
+    ],
+    lecturesByYear: (lecturesByYear || []).map((r) => ({
+      name: r._id || "غير محدد",
+      value: r.count,
+    })),
+    studentsTrend: fillDailySeries(studentsLast30, 30).map((d) => ({
+      date: d.date,
+      count: d.count,
+    })),
+    paymentsTrend: fillDailySeries(paymentsLast30, 30),
+    topLectures: topLecturesByAccess,
+    codes: {
+      total: codes.total,
+      used: codes.used,
+      unused: codes.unused,
+    },
+    pendingPayments: (pendingPayments || []).map((p) => ({
+      _id: p._id,
+      createdAt: p.createdAt,
+      studentName: p.studentId?.name || "طالب",
+      studentCode: p.studentId?.studentCode || "",
+      lectureTitle: p.lectureId?.title || "محاضرة",
+      price: p.lectureId?.price || 0,
+    })),
+    totals: {
+      payments: totalPayments,
+    },
+  });
 });
 
 export const logout = asyncHandler(async (req, res, next) => {
