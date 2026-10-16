@@ -34,7 +34,7 @@ router.patch(
   userController.resetPassword
 );
 
-router.get("/dashboard", auth, userController.dashboard);
+// router.get("/dashboard", auth, userController.dashboard);
 router.get("/students", auth, userController.students);
 router.get("/student/:id", auth, userController.studentById);
 
