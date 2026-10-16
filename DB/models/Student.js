@@ -40,10 +40,11 @@ const studentSchema = new mongoose.Schema({
     },
     nationalId: {
         type: String,
-        required: true,
+        required: false,
         unique: true,
+        sparse: true,
         validate: (value)=>{
-            if(!validator.isNumeric(value)){
+            if(value && !validator.isNumeric(value)){
                 throw new Error('Invalid nationalId');
             }
         }

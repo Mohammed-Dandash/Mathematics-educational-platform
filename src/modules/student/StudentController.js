@@ -38,10 +38,21 @@ export const register = asyncHandler(async (req, res, next) => {
     parseInt(process.env.SALT_ROUNDS || 10),
   );
 
-  const student = await Student.create({
-    ...req.body,
+  const studentData = {
+    name,
+    age,
+    email,
     password: passwordHash,
-  });
+    phone_number,
+    parent_phone_number,
+    Grade,
+  };
+
+  if (nationalId) {
+    studentData.nationalId = nationalId;
+  }
+
+  const student = await Student.create(studentData);
 
   return res.status(201).json({ message: "Student registered", student });
 });
